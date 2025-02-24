@@ -1,0 +1,11 @@
+{
+  "name": "pinkarrows",
+  "version": "1.0.0",
+  "main": "main.js",
+  "repository": "git@github.com:rathboma/pinkarrows.git",
+  "author": "Matthew Rathbone <matthew.rathbone@gmail.com>",
+  "license": "MIT",
+  "dependencies": {
+    "electron": "^34.2.0"
+  }
+}

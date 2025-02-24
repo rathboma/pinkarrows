@@ -139,6 +139,9 @@ $(document).ready(function () {
     $(this).addClass("selected");
 
   });
+
+  getFile()
+
 });
 
 function getModeNameForMode(modeValue) {
@@ -255,6 +258,32 @@ function preventDefaults(e) {
   e.stopPropagation();
 }
 
+function getFile() {
+  // Retrieve the file path from the query parameter
+  const urlParams = new URLSearchParams(window.location.search);
+  const filePath = urlParams.get('file');
+  console.log("fetching filePath", filePath)
+
+  if (filePath) {
+    // Request the file content via the IPC exposed in preload.js
+    window.electronAPI.getFileContent(filePath).then((response) => {
+      if (response.success) {
+        // Extract file name and type from the file path
+        const fileName = filePath.split(/[/\\]/).pop();
+        const fileType = fileName.split('.').pop();
+
+        // Call previewFile to render the image
+        previewFile(response);
+      } else {
+        console.error('Error loading file:', response.error);
+      }
+    });
+  }
+
+}
+
+
+
 // Handle drop
 dropArea.addEventListener('drop', handleDrop, false);
 
@@ -268,48 +297,47 @@ function handleFiles(files) {
   ([...files]).forEach(previewFile);
 }
 
-function previewFile(file) {
-  let reader = new FileReader();
-  reader.readAsDataURL(file);
-  reader.onloadend = function () {
-    fabric.Image.fromURL(reader.result, function (oImg) {
-      // Calculate the maximum width (90% of canvas width)
-      const maxWidth = canvas.width * 0.9;
+function previewFile(fileData) {
+  const dataUrl = `data:${fileData.mimeType};base64,${fileData.content}`;
+  // let reader = new FileReader();
+  // reader.readAsDataURL(file);
+  fabric.Image.fromURL(dataUrl, function (oImg) {
+    // Calculate the maximum width (90% of canvas width)
+    const maxWidth = canvas.width * 0.9;
 
-      // Scale the image if it's wider than maxWidth
-      if (oImg.width > maxWidth) {
-        const scaleFactor = maxWidth / oImg.width;
-        oImg.scale(scaleFactor);
+    // Scale the image if it's wider than maxWidth
+    if (oImg.width > maxWidth) {
+      const scaleFactor = maxWidth / oImg.width;
+      oImg.scale(scaleFactor);
+    }
+
+    oImg.set({
+      left: (canvas.width - oImg.getScaledWidth()) / 2,  // Center horizontally
+      top: canvas.height * .1, //(canvas.height - oImg.getScaledHeight()) / 2,  // Center vertically
+      angle: 0
+    }).setCoords();
+
+    oImg.on({
+      'mousedown': function () {
+        canvas.setActiveObject(oImg);
       }
-
-      oImg.set({
-        left: (canvas.width - oImg.getScaledWidth()) / 2,  // Center horizontally
-        top: canvas.height * .1, //(canvas.height - oImg.getScaledHeight()) / 2,  // Center vertically
-        angle: 0
-      }).setCoords();
-
-      oImg.on({
-        'mousedown': function () {
-          canvas.setActiveObject(oImg);
-        }
-      });
-
-      // Find the correct insertion index
-      let insertIndex = canvas.getObjects().findIndex(obj =>
-        obj.type !== 'image' && obj.type !== 'backgroundImage'
-      );
-
-      // If no non-image objects found, insert at the top
-      if (insertIndex === -1) {
-        insertIndex = canvas.getObjects().length;
-      }
-
-      // Insert the image at the found index
-      canvas.insertAt(oImg, insertIndex);
-
-      redrawCanvas();
     });
-  }
+
+    // Find the correct insertion index
+    let insertIndex = canvas.getObjects().findIndex(obj =>
+      obj.type !== 'image' && obj.type !== 'backgroundImage'
+    );
+
+    // If no non-image objects found, insert at the top
+    if (insertIndex === -1) {
+      insertIndex = canvas.getObjects().length;
+    }
+
+    // Insert the image at the found index
+    canvas.insertAt(oImg, insertIndex);
+
+    redrawCanvas();
+  });
 }
 
 function redrawCanvas() {
