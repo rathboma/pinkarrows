@@ -1,4 +1,4 @@
-import { createArrow, setArrowHeadPoint } from './arrow.js';
+import { createArrow, attachArrowControls, setArrowHeadPoint, syncArrowGeometry } from './arrow.js';
 
 /* ==========================================================================
    Constants
@@ -138,7 +138,16 @@ const canvas = new fabric.Canvas('canvas', {
   height: 0
 });
 
-canvas.extraProps = ['selectable', 'editable', 'escTool', 'globalCompositeOperation'];
+canvas.extraProps = ['selectable', 'editable', 'escTool', 'globalCompositeOperation', 'arrowUnit'];
+
+// Undo rebuilds objects from JSON, so what is drawn must not depend on state
+// the JSON cannot carry. The per-object raster cache is one such thing (the
+// arrow tool edits points without ever invalidating it), and coordinates
+// rounded to two decimals are another — enough to nudge a rotated, ×7-scaled
+// arrow by a visible pixel. Direct rendering is cheap at this object count,
+// and together these make every undo round trip pixel-exact.
+fabric.Object.prototype.objectCaching = false;
+fabric.Object.NUM_FRACTION_DIGITS = 6;
 
 fabric.Rect.prototype._controlsVisibility = { mt: false, mb: false, ml: false, mr: false };
 fabric.Polygon.prototype._controlsVisibility = {
@@ -437,6 +446,8 @@ canvas.on('mouse:up', () => {
     return;
   }
 
+  // Measure the finished arrow before the snapshot so undo restores it exactly.
+  if (made.escTool === 'arrow') syncArrowGeometry(made);
   commitHistoryEdit();
   setTool('select');
   canvas.setActiveObject(made);
@@ -467,12 +478,31 @@ canvas.on('text:editing:exited', (opt) => {
 });
 canvas.on('object:added', updateHistoryButtons);
 canvas.on('object:removed', updateHistoryButtons);
-canvas.on('object:modified', updateHistoryButtons);
+canvas.on('object:modified', (opt) => {
+  // Dragging the head control reshapes the arrow too. fabric-history has
+  // already snapshotted by now, so re-baseline against the measured object.
+  if (opt && opt.target && opt.target.escTool === 'arrow') {
+    syncArrowGeometry(opt.target);
+    resetHistoryBaseline();
+  }
+  updateHistoryButtons();
+});
 
 function updateHistoryButtons() {
   el.undo.disabled = !canvas.canUndo();
   el.redo.disabled = !canvas.canRedo();
 }
+
+/** Objects that come back from JSON are plain fabric types; give arrows their
+ *  head-drag control back. */
+function restoreArrowControls() {
+  canvas.getObjects().forEach((o) => {
+    if (o.escTool === 'arrow') attachArrowControls(o);
+  });
+}
+
+canvas.on('history:undo', restoreArrowControls);
+canvas.on('history:redo', restoreArrowControls);
 
 /* --- History snapshots ----------------------------------------------------
  * fabric-history snapshots the canvas when an object is added, but shapes are
@@ -1260,6 +1290,7 @@ function duplicateSelection() {
   if (!active) return;
   active.clone((clone) => {
     clone.set({ left: clone.left + 12 * unit(), top: clone.top + 12 * unit(), evented: true });
+    if (clone.escTool === 'arrow') attachArrowControls(clone);
     canvas.add(clone);
     canvas.setActiveObject(clone);
     canvas.requestRenderAll();

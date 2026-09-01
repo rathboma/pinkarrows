@@ -34,31 +34,38 @@ function createArrow(left, top, options = {}) {
     stroke: 'white',
     scaleX: 1,
     scaleY: 1,
-    objectCaching: true,
     strokeUniform: true,
     transparentCorners: false,
     cornerColor: 'blue'
   });
 
   polygon.strokeLineJoin = 'round';
+  // Serialised with the object (see extraProps) so a reloaded arrow keeps its
+  // proportions when its head is dragged again.
   polygon.arrowUnit = unit;
 
-  function arrowScaleActionHandler(eventData, transform, x, y) {
-    setArrowHeadPoint(transform.target, x, y);
-    return true;
-  }
+  return attachArrowControls(polygon);
+}
 
-  const rightArrowControl = new fabric.Control({
-    x: 0.51,
-    y: 0,
-    cursorStyle: 'pointer',
-    cornerStyle: 'circle',
-    actionHandler: arrowScaleActionHandler,
-    actionName: 'right_polygon_modify'
-  });
-
-  polygon.controls = { right_arrow_control: rightArrowControl };
-
+/**
+ * Replaces the standard scale handles with the single head-drag control.
+ * Controls are not part of fabric's JSON, so this has to run again on every
+ * arrow that comes back from undo, redo or duplicate.
+ */
+function attachArrowControls(polygon) {
+  polygon.controls = {
+    right_arrow_control: new fabric.Control({
+      x: 0.51,
+      y: 0,
+      cursorStyle: 'pointer',
+      cornerStyle: 'circle',
+      actionHandler: (eventData, transform, x, y) => {
+        setArrowHeadPoint(transform.target, x, y);
+        return true;
+      },
+      actionName: 'right_polygon_modify'
+    })
+  };
   return polygon;
 }
 
@@ -99,4 +106,40 @@ function setArrowHeadPoint(target, x, y) {
   target.setCoords();
 }
 
-export { createArrow, setArrowHeadPoint };
+/**
+ * updatePoints reshapes the head by rewriting the polygon's points, but fabric
+ * only measures a polygon when it is constructed — so the live object keeps
+ * the width/height/pathOffset of its original outline. A copy rebuilt from
+ * JSON (undo, redo, duplicate) measures the current points instead, and with
+ * originY 'top' the taller box moves the centre, so the arrow lands a few
+ * pixels off. Re-measure once an edit is over, holding the rendered geometry
+ * still: every point draws at centre + R·S·(p − pathOffset), so the centre
+ * must move by R·S·(newOffset − oldOffset), which is zero for this symmetric
+ * outline but is compensated for regardless.
+ */
+function syncArrowGeometry(target) {
+  if (!target || typeof target._calcDimensions !== 'function') return;
+  const dim = target._calcDimensions();
+  const nextOffset = { x: dim.left + dim.width / 2, y: dim.top + dim.height / 2 };
+  const same = Math.abs(dim.width - target.width) < 1e-6 &&
+    Math.abs(dim.height - target.height) < 1e-6 &&
+    Math.abs(nextOffset.x - target.pathOffset.x) < 1e-6 &&
+    Math.abs(nextOffset.y - target.pathOffset.y) < 1e-6;
+  if (same) return;
+
+  const center = target.getCenterPoint();
+  const shift = fabric.util.rotateVector(
+    new fabric.Point(
+      (nextOffset.x - target.pathOffset.x) * target.scaleX,
+      (nextOffset.y - target.pathOffset.y) * target.scaleY
+    ),
+    fabric.util.degreesToRadians(target.angle)
+  );
+
+  target.set({ width: dim.width, height: dim.height });
+  target.pathOffset = nextOffset;
+  target.setPositionByOrigin(center.add(shift), 'center', 'center');
+  target.setCoords();
+}
+
+export { createArrow, attachArrowControls, setArrowHeadPoint, syncArrowGeometry };
