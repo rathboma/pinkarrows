@@ -43,7 +43,7 @@ const HINTS = {
   crop: 'Drag the handles, then apply'
 };
 
-const KEYMAP = { s: 'select', a: 'arrow', b: 'rect', h: 'mark', t: 'text', e: 'emoji', c: 'crop' };
+const KEYMAP = { s: 'select', a: 'arrow', b: 'rect', m: 'mark', t: 'text', e: 'emoji', c: 'crop' };
 
 const RATIOS = [
   { id: 'orig', label: 'Orig', v: null, hint: 'Match the screenshot' },
@@ -270,8 +270,11 @@ function relayout() {
   const shotX = Math.round(L.shotX * k);
   const shotY = Math.round(L.shotY * k);
 
-  canvas.setZoom(k);
-  canvas.setDimensions({ width: shotW, height: shotH });
+  // The canvas spans the whole output so annotations can run into the margin.
+  // Image space is offset to the shot, so they stay anchored to the screenshot
+  // however the margin or ratio changes.
+  canvas.setDimensions({ width: stageW, height: stageH });
+  canvas.setViewportTransform([k, 0, 0, k, shotX, shotY]);
 
   el.stage.style.width = stageW + 'px';
   el.stage.style.height = stageH + 'px';
@@ -396,6 +399,10 @@ function updateHint() {
     el.hint.textContent = 'Drop a screenshot here, or paste with Ctrl+V';
     return;
   }
+  if (ui.editingText) {
+    el.hint.textContent = `Type the label — Esc or ${MOD}Enter when done`;
+    return;
+  }
   if (ui.tool === 'emoji' && ui.pendingEmoji) {
     el.hint.textContent = `Click to place ${ui.pendingEmoji}`;
     return;
@@ -415,7 +422,8 @@ canvas.on('mouse:down', (opt) => {
   const u = unit();
 
   if (ui.tool === 'text') {
-    if (opt.target && opt.target.selectable) return;
+    // A click on a label, or while one is being edited, belongs to that label.
+    if (ui.editingText || opt.target) return;
     const text = new fabric.Textbox('text', {
       left: p.x,
       top: p.y,
@@ -435,6 +443,8 @@ canvas.on('mouse:down', (opt) => {
     canvas.setActiveObject(text);
     text.enterEditing();
     text.selectAll();
+    // The label is placed; typing continues, but the tool is done.
+    setTool('select');
   } else if (ui.tool === 'emoji') {
     if (!ui.pendingEmoji) return;
     const emoji = new fabric.IText(ui.pendingEmoji, {
@@ -450,7 +460,6 @@ canvas.on('mouse:down', (opt) => {
     canvas.add(emoji);
     ui.pendingEmoji = null;
     setTool('select');
-    canvas.setActiveObject(emoji);
   } else if (ui.tool === 'rect') {
     beginHistoryEdit();
     drawing = new fabric.Rect({
@@ -529,7 +538,6 @@ canvas.on('mouse:up', () => {
   if (made.escTool === 'arrow') syncArrowGeometry(made);
   commitHistoryEdit();
   setTool('select');
-  canvas.setActiveObject(made);
   canvas.requestRenderAll();
 });
 
@@ -538,6 +546,7 @@ let textBeforeEdit = '';
 canvas.on('text:editing:entered', (opt) => {
   ui.editingText = true;
   textBeforeEdit = (opt && opt.target && opt.target.text) || '';
+  updateHint();
 });
 
 canvas.on('text:editing:exited', (opt) => {
@@ -554,6 +563,16 @@ canvas.on('text:editing:exited', (opt) => {
     // Retyping an existing label is a change worth undoing.
     canvas.fire('object:modified');
   }
+
+  // Finishing a label leaves nothing selected, like every other tool — unless
+  // this exit was caused by clicking something else, which fabric selects next.
+  setTimeout(() => {
+    if (canvas.getActiveObject() === target) {
+      canvas.discardActiveObject();
+      canvas.requestRenderAll();
+    }
+  }, 0);
+  updateHint();
 });
 canvas.on('object:added', updateHistoryButtons);
 canvas.on('object:removed', updateHistoryButtons);
@@ -901,18 +920,21 @@ function drawWatermark(ctx, outW, outH) {
 
 /** Renders the annotations at `k` times native resolution, independent of the
  *  on-screen zoom. */
-function renderAnnotations(k) {
-  const zoom = canvas.getZoom();
+/** Renders the annotation layer for the whole output at `k` times its natural
+ *  size, independent of the on-screen zoom. Image space is offset to the shot,
+ *  so marks that run into the margin come out where they were drawn. */
+function renderAnnotations(k, layout) {
+  const vpt = canvas.viewportTransform.slice();
   const width = canvas.getWidth();
   const height = canvas.getHeight();
   // An active selection re-parents its objects, which would throw the offscreen
   // render's geometry off — drop it before measuring.
   canvas.discardActiveObject();
-  canvas.setZoom(1);
-  canvas.setDimensions({ width: imgW, height: imgH });
+  canvas.setDimensions({ width: Math.round(layout.outW), height: Math.round(layout.outH) });
+  canvas.setViewportTransform([1, 0, 0, 1, layout.shotX, layout.shotY]);
   const out = canvas.toCanvasElement(k);
-  canvas.setZoom(zoom);
   canvas.setDimensions({ width, height });
+  canvas.setViewportTransform(vpt);
   canvas.requestRenderAll();
   return out;
 }
@@ -970,8 +992,10 @@ async function compose() {
   roundRectPath(ctx, shot.x, shot.y, shot.w, shot.h, radius);
   ctx.clip();
   ctx.drawImage(img, shot.x, shot.y, shot.w, shot.h);
-  ctx.drawImage(renderAnnotations(k), shot.x, shot.y, shot.w, shot.h);
   ctx.restore();
+
+  // Annotations go over everything, margin included.
+  ctx.drawImage(renderAnnotations(k, L), 0, 0, outW, outH);
 
   if (settings.watermark) drawWatermark(ctx, outW, outH);
 
@@ -1305,8 +1329,27 @@ function toast(message) {
    ========================================================================== */
 
 document.querySelectorAll('.tool-btn').forEach((btn) => {
-  btn.addEventListener('click', () => setTool(btn.dataset.tool));
+  btn.addEventListener('click', () => {
+    const tool = btn.dataset.tool;
+    // Emoji opens a picker, so its button also closes it again.
+    setTool(tool === 'emoji' && ui.tool === 'emoji' ? 'select' : tool);
+  });
 });
+
+// Buttons must not keep keyboard focus after a click: the next hotkey pressed
+// would light the button up with a focus ring, and a focused slider or field
+// would swallow the key instead.
+['#toolbar', '#statusbar', '#titlebar'].forEach((sel) => {
+  $(sel).addEventListener('click', (e) => {
+    const btn = e.target.closest('button');
+    if (btn) btn.blur();
+  });
+});
+document.querySelectorAll('input[type="range"]').forEach((input) => {
+  input.addEventListener('change', () => input.blur());
+});
+
+const emojiToolBtn = document.querySelector('.tool-btn[data-tool="emoji"]');
 
 el.undo.addEventListener('click', () => { canvas.undo(() => updateHistoryButtons()); });
 el.redo.addEventListener('click', () => { canvas.redo(() => updateHistoryButtons()); });
@@ -1377,6 +1420,11 @@ document.addEventListener('click', (e) => {
     p.pop.hidden = true;
     p.btn.setAttribute('aria-expanded', 'false');
   });
+  // The emoji picker closes on a click away too; with nothing picked, that
+  // also means the tool is no longer wanted.
+  if (!el.emojiPicker.hidden && !path.includes(el.emojiPicker) && !path.includes(emojiToolBtn)) {
+    setTool('select');
+  }
 });
 
 document.querySelectorAll('#pad-range, #pad-range-prefs').forEach((input) => {
@@ -1386,6 +1434,7 @@ document.querySelectorAll('#pad-range, #pad-range-prefs').forEach((input) => {
 el.outW.addEventListener('change', (e) => {
   ui.outW = clamp(Math.round(Number(e.target.value) || 0), 240, 8000);
   syncRatioPop();
+  e.target.blur();
 });
 
 $('#copy-menu-copy').addEventListener('click', () => {

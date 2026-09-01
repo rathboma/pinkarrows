@@ -95,6 +95,7 @@ function createFileWindow(filePath) {
 function createTray() {
   tray = new Tray(path.join(__dirname, 'tray-icon.png')); // Ensure this file exists.
   const contextMenu = Menu.buildFromTemplate([
+    { label: 'New window', click: () => { createFileWindow(); } },
     { label: 'Choose file', click: () => { triggerFromDialog(); } },
     { label: 'Paste from clipboard', click: () => { triggerFromClipboard(); } },
     { label: 'Quit', click: () => { app.quit(); } }
@@ -129,6 +130,10 @@ function watchScreenshotDir() {
 app.whenReady().then(() => {
   createTray();
   watchScreenshotDir();
+
+  // Start with a blank window — its drop area and file picker are the way in
+  // until a screenshot arrives on its own.
+  createFileWindow();
 
   // Listen for IPC requests for file content.
   ipcMain.handle('get-file-content', async (event, filePath) => {
@@ -186,6 +191,11 @@ app.whenReady().then(() => {
 
 app.on('window-all-closed', () => {
   // Stay resident in the tray so the next screenshot can open a window.
+});
+
+app.on('activate', () => {
+  // macOS: clicking the dock icon with no windows open should give one.
+  if (BrowserWindow.getAllWindows().length === 0) createFileWindow();
 });
 
 function getMimeType(ext) {

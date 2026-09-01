@@ -64,6 +64,11 @@ body {
 
 button { font-family: inherit; }
 
+/* Clicked buttons are blurred (see script.js), so a ring only ever means real
+   keyboard focus — and then it should look like ours, not the UA's. */
+button:focus { outline: none; }
+button:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
 input[type="range"] { -webkit-appearance: none; appearance: none; background: transparent; margin: 0; }
 input[type="range"]::-webkit-slider-runnable-track { height: 4px; border-radius: 2px; background: var(--border); }
 input[type="range"]::-webkit-slider-thumb {
@@ -1218,9 +1223,12 @@ body.no-watermark #watermark { display: none; }
   pointer-events: none;
 }
 
-#shot .canvas-container {
+/* The annotation canvas spans the whole output so marks can run into the
+   margin. It sits above the fill and shot, below the watermark and crop UI. */
+#stage .canvas-container {
   position: absolute !important;
   inset: 0;
+  z-index: 8;
 }
 
-#shot canvas { display: block; }
+#stage canvas { display: block; }

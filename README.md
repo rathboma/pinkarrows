@@ -26,7 +26,7 @@ On macOS, read `Ctrl` as `⌘`.
 | `S` | Select | `Ctrl+C` | Copy image to clipboard |
 | `A` | Arrow | `Ctrl+Shift+C` | Copy and close the window |
 | `B` | Box | `Ctrl+S` | Save to disk |
-| `H` | Highlighter | `Ctrl+V` | Paste an image |
+| `M` | Mark (highlighter) | `Ctrl+V` | Paste an image |
 | `T` | Text | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `E` | Emoji | `Ctrl+D` | Duplicate selection |
 | `C` | Crop | `Ctrl+,` | Preferences |
