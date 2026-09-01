@@ -202,7 +202,11 @@ function relayout() {
   el.shot.style.borderRadius = backdropOn() ? shotW * 0.012 + 'px' : '0px';
   el.stage.classList.toggle('has-backdrop', backdropOn());
 
+  // Bottom-right of the whole composition, backdrop or not, with an inset
+  // measured off the shot so it does not grow with the padding.
   el.watermark.style.setProperty('--wm-size', shotW * 0.0125 + 'px');
+  el.watermark.style.right = shotW * 0.011 + 'px';
+  el.watermark.style.bottom = shotH * 0.014 + 'px';
 
   // The crop layer lives in #stage, so give it the shot's exact box.
   el.cropLayer.style.left = padPx + 'px';
@@ -239,6 +243,7 @@ function setSource(image, name) {
   relayout();
   updateHint();
   canvas.clearHistory();
+  resetHistoryBaseline();
   updateHistoryButtons();
 }
 
@@ -337,6 +342,7 @@ canvas.on('mouse:down', (opt) => {
       fontWeight: '900',
       width: 250 * u
     });
+    beginHistoryEdit();
     canvas.add(text);
     canvas.setActiveObject(text);
     text.enterEditing();
@@ -358,6 +364,7 @@ canvas.on('mouse:down', (opt) => {
     setTool('select');
     canvas.setActiveObject(emoji);
   } else if (ui.tool === 'rect') {
+    beginHistoryEdit();
     drawing = new fabric.Rect({
       left: p.x,
       top: p.y,
@@ -374,6 +381,7 @@ canvas.on('mouse:down', (opt) => {
     });
     canvas.add(drawing);
   } else if (ui.tool === 'mark') {
+    beginHistoryEdit();
     drawing = new fabric.Rect({
       left: p.x,
       top: p.y,
@@ -391,6 +399,7 @@ canvas.on('mouse:down', (opt) => {
     });
     canvas.add(drawing);
   } else if (ui.tool === 'arrow') {
+    beginHistoryEdit();
     drawing = createArrow(p.x, p.y, { color: color(), unit: u });
     canvas.add(drawing);
   }
@@ -419,23 +428,42 @@ canvas.on('mouse:up', () => {
   const made = drawing;
   drawing = null;
 
-  // A click without a drag leaves a zero-size shape behind — drop it.
+  // A click without a drag leaves a zero-size shape behind — drop it, and
+  // discard the pending snapshot with it.
   if (made.escTool !== 'arrow' && (made.width < 2 || made.height < 2)) {
     canvas.remove(made);
+    abandonHistoryEdit();
     canvas.requestRenderAll();
     return;
   }
 
+  commitHistoryEdit();
   setTool('select');
   canvas.setActiveObject(made);
   canvas.requestRenderAll();
 });
 
-canvas.on('text:editing:entered', () => { ui.editingText = true; });
-canvas.on('text:editing:exited', () => {
+let textBeforeEdit = '';
+
+canvas.on('text:editing:entered', (opt) => {
+  ui.editingText = true;
+  textBeforeEdit = (opt && opt.target && opt.target.text) || '';
+});
+
+canvas.on('text:editing:exited', (opt) => {
   ui.editingText = false;
-  const active = canvas.getActiveObject();
-  if (active && active.type === 'textbox' && !active.text.trim()) canvas.remove(active);
+  const target = (opt && opt.target) || canvas.getActiveObject();
+  const empty = target && target.type === 'textbox' && !target.text.trim();
+  if (empty) canvas.remove(target);
+
+  if (historyPending) {
+    // A brand new label: record it, unless it was abandoned blank.
+    if (empty) abandonHistoryEdit();
+    else commitHistoryEdit();
+  } else if (target && target.text !== textBeforeEdit) {
+    // Retyping an existing label is a change worth undoing.
+    canvas.fire('object:modified');
+  }
 });
 canvas.on('object:added', updateHistoryButtons);
 canvas.on('object:removed', updateHistoryButtons);
@@ -444,6 +472,40 @@ canvas.on('object:modified', updateHistoryButtons);
 function updateHistoryButtons() {
   el.undo.disabled = !canvas.canUndo();
   el.redo.disabled = !canvas.canRedo();
+}
+
+/* --- History snapshots ----------------------------------------------------
+ * fabric-history snapshots the canvas when an object is added, but shapes are
+ * added empty on mouse:down and sized during the drag — so the snapshot would
+ * capture a half-drawn shape and undo would restore it at zero size. These
+ * defer the snapshot until the shape is actually finished.
+ */
+let historyPending = false;
+
+function beginHistoryEdit() {
+  if (historyPending) return;
+  historyPending = true;
+  canvas.historyProcessing = true;
+}
+
+function commitHistoryEdit() {
+  if (!historyPending) return;
+  historyPending = false;
+  canvas.historyProcessing = false;
+  canvas._historySaveAction();
+  updateHistoryButtons();
+}
+
+/** Ends a suppressed edit without recording it — for a shape we threw away. */
+function abandonHistoryEdit() {
+  if (!historyPending) return;
+  historyPending = false;
+  canvas.historyProcessing = false;
+}
+
+/** Re-baselines the snapshot after the canvas changes outside an edit. */
+function resetHistoryBaseline() {
+  canvas.historyNextState = canvas._historyNext();
 }
 
 /* ==========================================================================
@@ -639,8 +701,10 @@ function applyCrop() {
     exitCrop();
     setTool('select');
     relayout();
-    // Coordinates moved with the crop, so earlier history entries no longer apply.
+    // Coordinates moved with the crop, so earlier history entries no longer
+    // apply — drop them and re-baseline against the shifted objects.
     canvas.clearHistory();
+    resetHistoryBaseline();
     updateHistoryButtons();
     toast(`Cropped to ${w} × ${h}`);
   };
@@ -663,8 +727,10 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function drawWatermark(ctx, x, y, w, h) {
-  const size = w * 0.0125;
+/** Anchored to the output's bottom-right corner; sized off the shot so the mark
+ *  stays put whether or not a backdrop is padding the image out. */
+function drawWatermark(ctx, outW, outH, shotW, shotH) {
+  const size = shotW * 0.0125;
   const padX = size * 0.6;
   const padY = size * 0.26;
   const gap = size * 0.35;
@@ -676,8 +742,8 @@ function drawWatermark(ctx, x, y, w, h) {
   const textW = ctx.measureText(WATERMARK_TEXT).width;
   const boxW = padX * 2 + icon + gap + textW;
   const boxH = padY * 2 + Math.max(icon, size);
-  const bx = x + w - w * 0.011 - boxW;
-  const by = y + h - h * 0.014 - boxH;
+  const bx = outW - shotW * 0.011 - boxW;
+  const by = outH - shotH * 0.014 - boxH;
 
   ctx.fillStyle = 'rgba(255,255,255,.82)';
   roundRectPath(ctx, bx, by, boxW, boxH, size * 0.43);
@@ -772,8 +838,10 @@ async function compose() {
   ctx.clip();
   ctx.drawImage(img, padPx, padPx, imgW, imgH);
   ctx.drawImage(renderAnnotations(), padPx, padPx, imgW, imgH);
-  if (settings.watermark) drawWatermark(ctx, padPx, padPx, imgW, imgH);
   ctx.restore();
+
+  // Outside the clip, so it sits on the backdrop when there is one.
+  if (settings.watermark) drawWatermark(ctx, out.width, out.height, imgW, imgH);
 
   return out.toDataURL('image/png');
 }
@@ -835,6 +903,9 @@ async function saveToDisk() {
    Status bar — backdrop, watermark, zoom, theme
    ========================================================================== */
 
+/** Builds the chips once. Selecting one must not replace these nodes: the click
+ *  target would detach mid-dispatch and the popover would read it as a click
+ *  outside itself and close. syncBackdropChips() updates them in place. */
 function renderBackdropChips() {
   const solids = $('#solid-chips');
   const grads = $('#grad-chips');
@@ -844,15 +915,13 @@ function renderBackdropChips() {
   const addChip = (index, parent) => {
     const btn = document.createElement('button');
     btn.className = 'chip';
-    btn.style.background = index === 0 ? NONE_CHIP : backdropCss(index);
+    btn.dataset.backdrop = String(index);
     btn.title = index === 0 ? 'None' : index <= 4 ? SOLID_NAMES[index - 1] : GRAD_NAMES[index - 5];
     btn.setAttribute('aria-label', btn.title);
-    btn.setAttribute('aria-pressed', String(settings.backdrop === index));
     btn.addEventListener('click', () => {
       settings.backdrop = index;
       saveSettings();
-      renderBackdropChips();
-      syncBackdropButton();
+      syncBackdropChips();
       relayout();
     });
     parent.appendChild(btn);
@@ -860,9 +929,17 @@ function renderBackdropChips() {
 
   [0, 1, 2, 3, 4].forEach((i) => addChip(i, solids));
   [5, 6, 7, 8].forEach((i) => addChip(i, grads));
+  syncBackdropChips();
+}
 
+function syncBackdropChips() {
+  document.querySelectorAll('#backdrop-pop .chip').forEach((btn) => {
+    const index = Number(btn.dataset.backdrop);
+    btn.style.background = index === 0 ? NONE_CHIP : backdropCss(index);
+    btn.setAttribute('aria-pressed', String(settings.backdrop === index));
+  });
   $('#pad-range').value = settings.pad;
-  $('#pad-value').textContent = backdropOn() ? settings.pad + '%' : 'Off';
+  syncBackdropButton();
 }
 
 function syncBackdropButton() {
@@ -927,8 +1004,7 @@ function renderPrefs() {
     row.querySelector('input').addEventListener('input', (e) => {
       settings.solidBg[i] = e.target.value;
       saveSettings();
-      renderBackdropChips();
-      syncBackdropButton();
+      syncBackdropChips();
       relayout();
     });
     solidRows.appendChild(row);
@@ -952,16 +1028,14 @@ function renderPrefs() {
       settings.gradBg[i].a = e.target.value;
       paint();
       saveSettings();
-      renderBackdropChips();
-      syncBackdropButton();
+      syncBackdropChips();
       relayout();
     });
     end.addEventListener('input', (e) => {
       settings.gradBg[i].b = e.target.value;
       paint();
       saveSettings();
-      renderBackdropChips();
-      syncBackdropButton();
+      syncBackdropChips();
       relayout();
     });
     gradRows.appendChild(row);
@@ -978,8 +1052,7 @@ function setPrefsTab(tab) {
 }
 
 function openPrefs() {
-  el.backdropPop.hidden = true;
-  el.backdropBtn.setAttribute('aria-expanded', 'false');
+  closeBackdropPop();
   renderPrefs();
   el.prefs.hidden = false;
 }
@@ -1034,10 +1107,14 @@ $('#prefs-reset').addEventListener('click', () => {
   saveSettings();
   renderPrefs();
   renderPalette();
-  renderBackdropChips();
-  syncBackdropButton();
+  syncBackdropChips();
   relayout();
 });
+
+function closeBackdropPop() {
+  el.backdropPop.hidden = true;
+  el.backdropBtn.setAttribute('aria-expanded', 'false');
+}
 
 el.backdropBtn.addEventListener('click', () => {
   const open = el.backdropPop.hidden;
@@ -1045,11 +1122,15 @@ el.backdropBtn.addEventListener('click', () => {
   el.backdropBtn.setAttribute('aria-expanded', String(open));
 });
 
+// The popover stays open while you work in it — picking backdrops, dragging
+// padding. Only a click outside, the Backdrop button again, or Escape closes
+// it. composedPath() is fixed at dispatch, so it still reports the true origin
+// even if the handler replaced the clicked node.
 document.addEventListener('click', (e) => {
-  if (!el.backdropPop.hidden && !e.target.closest('.popover-anchor')) {
-    el.backdropPop.hidden = true;
-    el.backdropBtn.setAttribute('aria-expanded', 'false');
-  }
+  if (el.backdropPop.hidden) return;
+  const path = e.composedPath();
+  if (path.includes(el.backdropPop) || path.includes(el.backdropBtn)) return;
+  closeBackdropPop();
 });
 
 $('#pad-range').addEventListener('input', (e) => {
@@ -1057,8 +1138,7 @@ $('#pad-range').addEventListener('input', (e) => {
   // Nudging padding while the backdrop is off implies wanting one.
   if (!backdropOn() && settings.pad > 0) settings.backdrop = 5;
   saveSettings();
-  renderBackdropChips();
-  syncBackdropButton();
+  syncBackdropChips();
   relayout();
 });
 
@@ -1114,11 +1194,7 @@ document.addEventListener('keydown', (e) => {
 
   if (e.key === 'Escape') {
     if (!el.prefs.hidden) return closePrefs();
-    if (!el.backdropPop.hidden) {
-      el.backdropPop.hidden = true;
-      el.backdropBtn.setAttribute('aria-expanded', 'false');
-      return;
-    }
+    if (!el.backdropPop.hidden) return closeBackdropPop();
     if (ui.tool === 'crop') return setTool('select');
     if (ui.tool === 'emoji') return setTool('select');
     return;

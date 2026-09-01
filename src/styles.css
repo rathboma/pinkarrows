@@ -396,8 +396,7 @@ body:not(.is-desktop) .win-btn { display: none; }
 /* --- Watermark preview --------------------------------------------------- */
 #watermark {
   position: absolute;
-  right: 1.1%;
-  bottom: 1.4%;
+  z-index: 5;
   display: flex;
   align-items: center;
   gap: .35em;
