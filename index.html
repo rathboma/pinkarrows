@@ -19,26 +19,27 @@
 
         <!-- ============================ Title bar ============================ -->
         <div id="titlebar">
+            <span id="traffic-space" aria-hidden="true"></span>
             <div class="mark" aria-hidden="true"><span>e</span></div>
             <div id="title-meta">
                 <span id="title-name">No image</span>
                 <span id="title-dims"></span>
             </div>
-            <div id="title-actions">
-                <button id="prefs-open" title="Preferences — Ctrl+," aria-label="Preferences">
-                    <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true">
-                        <path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"></path>
-                        <path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z"></path>
-                    </svg>
-                </button>
+            <button id="prefs-open" title="Preferences — Ctrl+," aria-label="Preferences">
+                <svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 4.754a3.246 3.246 0 1 0 0 6.492 3.246 3.246 0 0 0 0-6.492zM5.754 8a2.246 2.246 0 1 1 4.492 0 2.246 2.246 0 0 1-4.492 0z"></path><path d="M9.796 1.343c-.527-1.79-3.065-1.79-3.592 0l-.094.319a.873.873 0 0 1-1.255.52l-.292-.16c-1.64-.892-3.433.902-2.54 2.541l.159.292a.873.873 0 0 1-.52 1.255l-.319.094c-1.79.527-1.79 3.065 0 3.592l.319.094a.873.873 0 0 1 .52 1.255l-.16.292c-.892 1.64.901 3.434 2.541 2.54l.292-.159a.873.873 0 0 1 1.255.52l.094.319c.527 1.79 3.065 1.79 3.592 0l.094-.319a.873.873 0 0 1 1.255-.52l.292.16c1.64.893 3.434-.902 2.54-2.541l-.159-.292a.873.873 0 0 1 .52-1.255l.319-.094c1.79-.527 1.79-3.065 0-3.592l-.319-.094a.873.873 0 0 1-.52-1.255l.16-.292c.893-1.64-.902-3.433-2.541-2.54l-.292.159a.873.873 0 0 1-1.255-.52l-.094-.319zm-2.633.283c.246-.835 1.428-.835 1.674 0l.094.319a1.873 1.873 0 0 0 2.693 1.115l.291-.16c.764-.415 1.6.42 1.184 1.185l-.159.292a1.873 1.873 0 0 0 1.116 2.692l.318.094c.835.246.835 1.428 0 1.674l-.319.094a1.873 1.873 0 0 0-1.115 2.693l.16.291c.415.764-.42 1.6-1.185 1.184l-.291-.159a1.873 1.873 0 0 0-2.693 1.116l-.094.318c-.246.835-1.428.835-1.674 0l-.094-.319a1.873 1.873 0 0 0-2.692-1.115l-.292.16c-.764.415-1.6-.42-1.184-1.185l.159-.291A1.873 1.873 0 0 0 1.945 8.93l-.319-.094c-.835-.246-.835-1.428 0-1.674l.319-.094A1.873 1.873 0 0 0 3.06 4.377l-.16-.292c-.415-.764.42-1.6 1.185-1.184l.292.159a1.873 1.873 0 0 0 2.692-1.115l.094-.319z"></path></svg>
+            </button>
+            <div id="win-controls">
                 <button class="win-btn" id="win-min" title="Minimize" aria-label="Minimize">
-                    <svg width="9" height="9" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M1 5h8"></path></svg>
+                    <svg class="ico-linux" width="9" height="9" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><path d="M1 5h8"></path></svg>
+                    <svg class="ico-win" width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M0 5h10"></path></svg>
                 </button>
                 <button class="win-btn" id="win-max" title="Maximize" aria-label="Maximize">
-                    <svg width="9" height="9" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.4" fill="none" aria-hidden="true"><rect x="1.2" y="1.2" width="7.6" height="7.6" rx="1.4"></rect></svg>
+                    <svg class="ico-linux" width="9" height="9" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.4" fill="none" aria-hidden="true"><rect x="1.2" y="1.2" width="7.6" height="7.6" rx="1.4"></rect></svg>
+                    <svg class="ico-win" width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1" fill="none" aria-hidden="true"><rect x=".5" y=".5" width="9" height="9"></rect></svg>
                 </button>
                 <button class="win-btn close" id="win-close" title="Close" aria-label="Close">
-                    <svg width="9" height="9" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"></path></svg>
+                    <svg class="ico-linux" width="9" height="9" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><path d="M1.5 1.5l7 7M8.5 1.5l-7 7"></path></svg>
+                    <svg class="ico-win" width="10" height="10" viewBox="0 0 10 10" stroke="currentColor" stroke-width="1" aria-hidden="true"><path d="M0 0l10 10M10 0L0 10"></path></svg>
                 </button>
             </div>
         </div>
@@ -54,7 +55,7 @@
                     <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path fill-rule="evenodd" d="M14 2.5a.5.5 0 0 0-.5-.5h-6a.5.5 0 0 0 0 1h4.793L2.146 13.146a.5.5 0 0 0 .708.708L13 3.707V8.5a.5.5 0 0 0 1 0v-6z"></path></svg>
                     <span class="label">Arrow</span>
                 </button>
-                <button class="tool-btn" data-tool="rect" title="Rectangle — R" aria-pressed="false">
+                <button class="tool-btn" data-tool="rect" title="Box — B" aria-pressed="false">
                     <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" aria-hidden="true"><rect x="2.2" y="2.2" width="11.6" height="11.6" rx="2.6"></rect></svg>
                     <span class="label">Box</span>
                 </button>
@@ -91,10 +92,27 @@
 
             <div class="spacer"></div>
 
-            <button class="action-btn" id="copy" title="Copy to clipboard — Ctrl+C">
-                <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="5.4" y="1.6" width="9" height="9" rx="2"></rect><path d="M10.6 13.2v.6a1.6 1.6 0 0 1-1.6 1.6H3.2a1.6 1.6 0 0 1-1.6-1.6V6.4a1.6 1.6 0 0 1 1.6-1.6h.6"></path></svg>
-                <span class="label">Copy</span>
-            </button>
+            <div class="split" id="copy-split">
+                <button class="action-btn" id="copy" title="Copy to clipboard — Ctrl+C">
+                    <svg width="15" height="15" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="5.4" y="1.6" width="9" height="9" rx="2"></rect><path d="M10.6 13.2v.6a1.6 1.6 0 0 1-1.6 1.6H3.2a1.6 1.6 0 0 1-1.6-1.6V6.4a1.6 1.6 0 0 1 1.6-1.6h.6"></path></svg>
+                    <span class="label">Copy</span>
+                </button>
+                <button id="copy-caret" title="More copy options" aria-label="More copy options" aria-haspopup="menu" aria-expanded="false">
+                    <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor" aria-hidden="true"><path d="M1 3.3h8L5 7.6z"></path></svg>
+                </button>
+                <div id="copy-menu" role="menu" hidden>
+                    <button id="copy-menu-copy" role="menuitem">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="5.4" y="1.6" width="9" height="9" rx="2"></rect><path d="M10.6 13.2v.6a1.6 1.6 0 0 1-1.6 1.6H3.2a1.6 1.6 0 0 1-1.6-1.6V6.4a1.6 1.6 0 0 1 1.6-1.6h.6"></path></svg>
+                        <span>Copy</span>
+                        <kbd id="copy-key">Ctrl C</kbd>
+                    </button>
+                    <button id="copy-menu-close" role="menuitem">
+                        <svg width="13" height="13" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" aria-hidden="true"><path d="M6.2 2.2H3.4A1.6 1.6 0 0 0 1.8 3.8v8.4a1.6 1.6 0 0 0 1.6 1.6h2.8"></path><path d="M10.4 11.2 13.8 8l-3.4-3.2M13.4 8H5.6"></path></svg>
+                        <span>Copy &amp; close</span>
+                        <kbd id="copy-close-key">⇧Ctrl C</kbd>
+                    </button>
+                </div>
+            </div>
             <button class="action-btn primary" id="save" title="Save to disk — Ctrl+S">
                 <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"></path><path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"></path></svg>
                 <span class="label">Save</span>
@@ -115,7 +133,7 @@
                 </div>
                 <div id="watermark">
                     <div class="mark" aria-hidden="true"><span>e</span></div>
-                    escribo.app
+                    made with escriboapp.com
                 </div>
                 <div id="crop-layer" hidden>
                     <div id="crop-box">
@@ -152,20 +170,43 @@
             <div class="spacer"></div>
 
             <div class="popover-anchor">
-                <button class="status-btn" id="backdrop-btn" title="Backdrop" aria-expanded="false">
-                    <span id="backdrop-chip"></span>
-                    Backdrop
+                <button class="status-btn" id="ratio-btn" title="Aspect ratio" aria-expanded="false">
+                    <svg width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4" aria-hidden="true"><rect x="1.7" y="3.4" width="12.6" height="9.2" rx="1.6"></rect><path d="M5.4 3.4v9.2"></path></svg>
+                    <span id="ratio-label">Orig</span>
                 </button>
-                <div id="backdrop-pop" hidden>
-                    <div class="pop-label">Solid</div>
-                    <div class="chip-row solid" id="solid-chips"></div>
-                    <div class="pop-label">Gradient</div>
-                    <div class="chip-row grad" id="grad-chips"></div>
+                <div id="ratio-pop" class="popover" hidden>
+                    <div class="pop-label">Aspect ratio</div>
+                    <div class="segmented ratios" id="ratio-seg" role="group" aria-label="Aspect ratio"></div>
+                    <div class="pop-note" id="ratio-note"></div>
+                    <div class="pop-label export">Export size</div>
+                    <div class="size-row">
+                        <input type="number" id="out-w" min="240" max="8000" step="10" aria-label="Export width">
+                        <span class="x">×</span>
+                        <span id="out-h"></span>
+                        <span class="unit">px</span>
+                    </div>
+                    <div class="segmented" id="scale-seg" role="group" aria-label="Export scale"></div>
+                </div>
+            </div>
+
+            <div class="status-divider"></div>
+
+            <div class="popover-anchor">
+                <button class="status-btn" id="backdrop-btn" title="Padding &amp; fill" aria-expanded="false">
+                    <span id="backdrop-chip"></span>
+                    Padding
+                </button>
+                <div id="backdrop-pop" class="popover" hidden>
                     <div class="pad-row">
                         <span>Padding</span>
-                        <input type="range" id="pad-range" min="0" max="18" step="1" value="6" aria-label="Backdrop padding">
-                        <span id="pad-value">6%</span>
+                        <input type="range" id="pad-range" min="0" max="18" step="1" value="0" aria-label="Padding">
+                        <span id="pad-value" class="pad-value">0%</span>
                     </div>
+                    <div class="pop-note pad-note" id="pad-note"></div>
+                    <div class="pop-label">Fill — solid</div>
+                    <div class="chip-row solid" id="solid-chips"></div>
+                    <div class="pop-label">Fill — gradient</div>
+                    <div class="chip-row grad" id="grad-chips"></div>
                 </div>
             </div>
 
@@ -220,7 +261,7 @@
                     </button>
                     <button class="prefs-tab" data-tab="backdrop" role="tab" aria-selected="false">
                         <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" aria-hidden="true"><rect x="1.9" y="1.9" width="12.2" height="12.2" rx="2.4"></rect><rect x="4.7" y="4.7" width="6.6" height="6.6" rx="1.2"></rect></svg>
-                        Backdrops
+                        Padding fill
                     </button>
                 </div>
 
@@ -232,11 +273,17 @@
                     </section>
 
                     <section id="tab-backdrop" hidden>
-                        <div class="prefs-title">Backdrop presets</div>
-                        <div class="prefs-note">Frames the screenshot when you pick a backdrop in the status bar.</div>
-                        <div class="pop-label">Solid</div>
+                        <div class="prefs-title">Padding fill presets</div>
+                        <div class="prefs-note">Used for the margin and any extra canvas. Pick one from Padding in the status bar.</div>
+                        <div class="pad-row">
+                            <span>Padding</span>
+                            <input type="range" id="pad-range-prefs" min="0" max="18" step="1" value="0" aria-label="Padding">
+                            <span id="pad-value-prefs" class="pad-value">0%</span>
+                        </div>
+                        <div class="pop-note pad-note" id="pad-note-prefs"></div>
+                        <div class="pop-label">Fill — solid</div>
                         <div class="pref-grid solid" id="solid-rows"></div>
-                        <div class="pop-label">Gradient</div>
+                        <div class="pop-label">Fill — gradient</div>
                         <div class="pref-grid" id="grad-rows"></div>
                     </section>
                 </div>

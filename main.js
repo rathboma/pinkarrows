@@ -56,13 +56,18 @@ async function triggerFromDialog() {
 
 // Create a new window that loads index.html with a query parameter for the file path.
 function createFileWindow(filePath) {
+  // The renderer draws the title bar. On macOS the native traffic lights stay,
+  // positioned to sit in it; elsewhere the renderer draws the window buttons.
+  const chrome = process.platform === 'darwin'
+    ? { titleBarStyle: 'hidden', trafficLightPosition: { x: 13, y: 13 } }
+    : { frame: false };
+
   let win = new BrowserWindow({
     width: 1280,
     height: 830,
     minWidth: 720,
     minHeight: 520,
-    // The renderer draws its own title bar and window buttons.
-    frame: false,
+    ...chrome,
     show: false,
     backgroundColor: '#1f1f24',
     icon: path.join(__dirname, 'assets', 'icon.png'),

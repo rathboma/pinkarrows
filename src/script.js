@@ -4,7 +4,7 @@ import { createArrow, attachArrowControls, setArrowHeadPoint, syncArrowGeometry 
    Constants
    ========================================================================== */
 
-const WATERMARK_TEXT = 'escribo.app';
+const WATERMARK_TEXT = 'made with escriboapp.com';
 const BRAND = '#FF007F';
 const STORE_KEY = 'escribo.settings';
 const AREA_PAD = 22;          // #area padding, keep in sync with styles.css
@@ -26,8 +26,8 @@ const DEFAULTS = {
   ],
   theme: 'dark',
   watermark: true,
-  backdrop: 0,
-  pad: 6
+  backdrop: 0,   // fill preset: 0 none, 1-4 solid, 5-8 gradient
+  pad: 0         // margin, % of the output width
 };
 
 const EMOJIS = ['🔥', '👍', '👎', '🎉', '⚠️', '✅', '❌', '💡',
@@ -43,7 +43,20 @@ const HINTS = {
   crop: 'Drag the handles, then apply'
 };
 
-const KEYMAP = { s: 'select', a: 'arrow', r: 'rect', h: 'mark', t: 'text', e: 'emoji', c: 'crop' };
+const KEYMAP = { s: 'select', a: 'arrow', b: 'rect', h: 'mark', t: 'text', e: 'emoji', c: 'crop' };
+
+const RATIOS = [
+  { id: 'orig', label: 'Orig', v: null, hint: 'Match the screenshot' },
+  { id: '16:9', label: '16:9', v: 16 / 9, hint: 'Slides, video, Twitter' },
+  { id: '4:3', label: '4:3', v: 4 / 3, hint: 'Docs and older displays' },
+  { id: '1:1', label: '1:1', v: 1, hint: 'Square — social posts' },
+  { id: '9:16', label: '9:16', v: 9 / 16, hint: 'Portrait — stories' }
+];
+const SCALES = [
+  { label: '½×', k: 0.5 },
+  { label: '1×', k: 1 },
+  { label: '2×', k: 2 }
+];
 const NONE_CHIP = 'linear-gradient(135deg,var(--sunken) 44%,var(--muted) 44%,var(--muted) 56%,var(--sunken) 56%)';
 const UI_FONT = '-apple-system, "Segoe UI", Cantarell, Ubuntu, system-ui, sans-serif';
 
@@ -87,7 +100,10 @@ const ui = {
   zoom: 0,
   prefsTab: 'annotate',
   pendingEmoji: null,
-  editingText: false
+  editingText: false,
+  ratio: 'orig',      // output aspect ratio, per session
+  outScale: 1,        // export scale when no explicit width is set
+  outW: null          // explicit export width, or null to follow outScale
 };
 
 let img = null;        // HTMLImageElement holding the full-resolution source
@@ -120,11 +136,29 @@ const el = {
   backdropBtn: $('#backdrop-btn'),
   backdropChip: $('#backdrop-chip'),
   undo: $('#undo'),
-  redo: $('#redo')
+  redo: $('#redo'),
+  ratioBtn: $('#ratio-btn'),
+  ratioPop: $('#ratio-pop'),
+  ratioLabel: $('#ratio-label'),
+  ratioNote: $('#ratio-note'),
+  ratioSeg: $('#ratio-seg'),
+  scaleSeg: $('#scale-seg'),
+  outW: $('#out-w'),
+  outH: $('#out-h'),
+  copyCaret: $('#copy-caret'),
+  copyMenu: $('#copy-menu')
 };
 
 const isDesktop = !!window.electronAPI;
 document.body.classList.toggle('is-desktop', isDesktop);
+
+// Window chrome follows the OS; on the web there is no chrome, so the layout
+// falls back to the plain one and only the modifier-key labels adapt.
+const platform = (isDesktop && window.electronAPI.platform) || 'linux';
+document.documentElement.dataset.platform = platform;
+const isMac = platform === 'darwin' || (!isDesktop && /Mac/.test(navigator.platform));
+const MOD = isMac ? '⌘' : 'Ctrl+';
+const MOD_MENU = isMac ? '⌘' : 'Ctrl ';
 
 /* ==========================================================================
    Canvas
@@ -164,7 +198,7 @@ const backdropOn = () => settings.backdrop !== 0;
 const hasImage = () => !!img;
 
 /* ==========================================================================
-   Layout — fit the shot (plus backdrop) into the canvas area
+   Layout — the output box (ratio + padding) with the shot fitted inside
    ========================================================================== */
 
 function backdropCss(index = settings.backdrop) {
@@ -174,61 +208,105 @@ function backdropCss(index = settings.backdrop) {
   return `linear-gradient(135deg,${g.a} 0%,${g.b} 100%)`;
 }
 
-/** Padding is a percentage of the composed width, exactly as CSS resolves it. */
+/** Padding is a percentage of the output width on all four sides. */
 function padFraction() {
-  return backdropOn() ? settings.pad / 100 : 0;
+  return settings.pad / 100;
 }
 
-function fitScale() {
+function currentRatio() {
+  return RATIOS.find((r) => r.id === ui.ratio) || RATIOS[0];
+}
+
+/**
+ * Geometry of the composed output at 1×, in image pixels: the box, its
+ * padding, and where the shot sits in it. "Orig" wraps the screenshot in a
+ * uniform margin and adds no canvas; a fixed ratio fits the screenshot inside
+ * the padded box and leaves the rest as extra canvas.
+ */
+function naturalLayout() {
+  const f = padFraction();
+  const R = currentRatio();
+
+  if (!R.v) {
+    const outW = imgW / (1 - 2 * f);
+    const pad = f * outW;
+    return { outW, outH: imgH + 2 * pad, pad, shotX: pad, shotY: pad };
+  }
+
+  // Ratio of the box left once padding is taken off each side.
+  const availRatio = (1 - 2 * f) / (1 / R.v - 2 * f);
+  const heightBound = availRatio >= imgW / imgH;
+  const outW = heightBound ? imgH / (1 / R.v - 2 * f) : imgW / (1 - 2 * f);
+  const outH = outW / R.v;
+  const pad = f * outW;
+  return {
+    outW,
+    outH,
+    pad,
+    shotX: pad + (outW - 2 * pad - imgW) / 2,
+    shotY: pad + (outH - 2 * pad - imgH) / 2
+  };
+}
+
+function fitScale(layout = naturalLayout()) {
   const availW = Math.max(1, el.area.clientWidth - AREA_PAD * 2);
   const availH = Math.max(1, el.area.clientHeight - AREA_PAD * 2);
-  const p = padFraction();
-  const k = 1 / (1 - 2 * p);
-  return Math.min(availW / (imgW * k), availH / (imgH + 2 * p * k * imgW), 1);
+  return Math.min(availW / layout.outW, availH / layout.outH, 1);
 }
 
-function currentScale() {
-  return fitScale() * Math.pow(ZOOM_STEP, ui.zoom);
+function currentScale(layout = naturalLayout()) {
+  return fitScale(layout) * Math.pow(ZOOM_STEP, ui.zoom);
 }
 
 function relayout() {
   if (!hasImage()) return;
 
-  const scale = currentScale();
-  const shotW = Math.max(1, Math.round(imgW * scale));
-  const shotH = Math.max(1, Math.round(imgH * scale));
+  const L = naturalLayout();
+  const k = currentScale(L);
+  const stageW = Math.max(1, Math.round(L.outW * k));
+  const stageH = Math.max(1, Math.round(L.outH * k));
+  const shotW = Math.max(1, Math.round(imgW * k));
+  const shotH = Math.max(1, Math.round(imgH * k));
+  const shotX = Math.round(L.shotX * k);
+  const shotY = Math.round(L.shotY * k);
 
-  canvas.setZoom(scale);
+  canvas.setZoom(k);
   canvas.setDimensions({ width: shotW, height: shotH });
 
+  el.stage.style.width = stageW + 'px';
+  el.stage.style.height = stageH + 'px';
+  el.backdrop.style.background = backdropCss();
+
+  el.shot.style.left = shotX + 'px';
+  el.shot.style.top = shotY + 'px';
   el.shot.style.width = shotW + 'px';
   el.shot.style.height = shotH + 'px';
+  el.shot.style.borderRadius = settings.pad > 0 ? shotW * 0.012 + 'px' : '0px';
+  el.shot.style.boxShadow = backdropOn() && settings.pad > 0 ? '0 10px 34px rgba(0,0,0,.32)' : 'none';
 
-  const p = padFraction();
-  const padPx = p > 0 ? Math.round((p * shotW) / (1 - 2 * p)) : 0;
-  el.backdrop.style.padding = padPx + 'px';
-  el.backdrop.style.background = backdropCss();
-  el.shot.style.borderRadius = backdropOn() ? shotW * 0.012 + 'px' : '0px';
-  el.stage.classList.toggle('has-backdrop', backdropOn());
-
-  // Bottom-right of the whole composition, backdrop or not, with an inset
-  // measured off the shot so it does not grow with the padding.
-  el.watermark.style.setProperty('--wm-size', shotW * 0.0125 + 'px');
-  el.watermark.style.right = shotW * 0.011 + 'px';
-  el.watermark.style.bottom = shotH * 0.014 + 'px';
+  // Watermark: bottom-right of the whole output, sized and inset off its width.
+  el.watermark.style.setProperty('--wm-size', stageW * 0.0125 + 'px');
+  el.watermark.style.setProperty('--wm-inset', stageW * 0.013 + 'px');
 
   // The crop layer lives in #stage, so give it the shot's exact box.
-  el.cropLayer.style.left = padPx + 'px';
-  el.cropLayer.style.top = padPx + 'px';
+  el.cropLayer.style.left = shotX + 'px';
+  el.cropLayer.style.top = shotY + 'px';
   el.cropLayer.style.width = shotW + 'px';
   el.cropLayer.style.height = shotH + 'px';
 
-  el.zoomFit.textContent = ui.zoom === 0 ? 'Fit' : Math.round(scale * 100) + '%';
+  el.zoomFit.textContent = ui.zoom === 0 ? 'Fit' : Math.round(k * 100) + '%';
   if (crop) renderCropBox();
+  syncRatioPop(L);
   canvas.requestRenderAll();
 }
 
-new ResizeObserver(() => relayout()).observe(el.area);
+// Relayout on the next frame: it resizes #stage, which is inside the observed
+// area, and doing that during delivery makes Chromium complain about a loop.
+let relayoutFrame = 0;
+new ResizeObserver(() => {
+  cancelAnimationFrame(relayoutFrame);
+  relayoutFrame = requestAnimationFrame(relayout);
+}).observe(el.area);
 
 /* ==========================================================================
    Loading images
@@ -249,6 +327,7 @@ function setSource(image, name) {
   document.title = `${name || 'Untitled'} — escribo`;
 
   ui.zoom = 0;
+  ui.outW = null;
   relayout();
   updateHint();
   canvas.clearHistory();
@@ -743,7 +822,7 @@ function applyCrop() {
 }
 
 /* ==========================================================================
-   Export — backdrop + shot + annotations + watermark
+   Export — fill + shot + annotations + watermark, at the chosen size
    ========================================================================== */
 
 function roundRectPath(ctx, x, y, w, h, r) {
@@ -757,14 +836,27 @@ function roundRectPath(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-/** Anchored to the output's bottom-right corner; sized off the shot so the mark
- *  stays put whether or not a backdrop is padding the image out. */
-function drawWatermark(ctx, outW, outH, shotW, shotH) {
-  const size = shotW * 0.0125;
-  const padX = size * 0.6;
-  const padY = size * 0.26;
-  const gap = size * 0.35;
-  const icon = size * 0.9;
+/** Factor between the natural layout (shot at native resolution) and the PNG.
+ *  Scales are applied exactly — 1× is lossless and 2× an integer upscale —
+ *  and only an explicit width makes it fractional. */
+function exportScale(layout = naturalLayout()) {
+  if (ui.outW == null) return ui.outScale;
+  return clamp(Math.round(ui.outW), 240, 8000) / layout.outW;
+}
+
+function exportWidth(layout = naturalLayout()) {
+  return Math.max(1, Math.round(layout.outW * exportScale(layout)));
+}
+
+/** Bottom-right of the output, sized and inset off its width, so it lands in
+ *  the same corner whether or not there is padding or extra canvas. */
+function drawWatermark(ctx, outW, outH) {
+  const size = outW * 0.0125;
+  const inset = outW * 0.013;
+  const padX = size * 0.65;
+  const padY = size * 0.3;
+  const gap = size * 0.4;
+  const icon = size * 0.95;
   const label = `600 ${size}px ${UI_FONT}`;
 
   ctx.save();
@@ -772,12 +864,16 @@ function drawWatermark(ctx, outW, outH, shotW, shotH) {
   const textW = ctx.measureText(WATERMARK_TEXT).width;
   const boxW = padX * 2 + icon + gap + textW;
   const boxH = padY * 2 + Math.max(icon, size);
-  const bx = outW - shotW * 0.011 - boxW;
-  const by = outH - shotH * 0.014 - boxH;
+  const bx = outW - inset - boxW;
+  const by = outH - inset - boxH;
 
-  ctx.fillStyle = 'rgba(255,255,255,.82)';
-  roundRectPath(ctx, bx, by, boxW, boxH, size * 0.43);
+  ctx.shadowColor = 'rgba(0,0,0,.12)';
+  ctx.shadowBlur = size * 0.3;
+  ctx.shadowOffsetY = size * 0.1;
+  ctx.fillStyle = 'rgba(255,255,255,.86)';
+  roundRectPath(ctx, bx, by, boxW, boxH, size * 0.45);
   ctx.fill();
+  ctx.shadowColor = 'transparent';
 
   const cx = bx + padX + icon / 2;
   const cy = by + boxH / 2;
@@ -795,7 +891,7 @@ function drawWatermark(ctx, outW, outH, shotW, shotH) {
   ctx.textBaseline = 'middle';
   ctx.fillText('e', cx - glyph * 0.03375, cy - glyph * 0.06375);
 
-  ctx.fillStyle = '#8a8a96';
+  ctx.fillStyle = '#7c7c88';
   ctx.font = label;
   ctx.textAlign = 'left';
   ctx.textBaseline = 'middle';
@@ -803,8 +899,9 @@ function drawWatermark(ctx, outW, outH, shotW, shotH) {
   ctx.restore();
 }
 
-/** Renders annotations at full resolution, independent of the on-screen zoom. */
-function renderAnnotations() {
+/** Renders the annotations at `k` times native resolution, independent of the
+ *  on-screen zoom. */
+function renderAnnotations(k) {
   const zoom = canvas.getZoom();
   const width = canvas.getWidth();
   const height = canvas.getHeight();
@@ -813,7 +910,7 @@ function renderAnnotations() {
   canvas.discardActiveObject();
   canvas.setZoom(1);
   canvas.setDimensions({ width: imgW, height: imgH });
-  const out = canvas.toCanvasElement(1);
+  const out = canvas.toCanvasElement(k);
   canvas.setZoom(zoom);
   canvas.setDimensions({ width, height });
   canvas.requestRenderAll();
@@ -830,48 +927,53 @@ async function compose() {
     }
   }
 
-  const p = padFraction();
-  const padPx = p > 0 ? Math.round((p * imgW) / (1 - 2 * p)) : 0;
+  const L = naturalLayout();
+  const k = exportScale(L);
+  const outW = exportWidth(L);
+  const outH = Math.max(1, Math.round(L.outH * k));
+  const shot = { x: L.shotX * k, y: L.shotY * k, w: imgW * k, h: imgH * k };
+  const radius = settings.pad > 0 ? shot.w * 0.012 : 0;
+
   const out = document.createElement('canvas');
-  out.width = imgW + padPx * 2;
-  out.height = imgH + padPx * 2;
-
+  out.width = outW;
+  out.height = outH;
   const ctx = out.getContext('2d');
-  const u = unit();
-  const radius = backdropOn() ? imgW * 0.012 : 0;
 
+  // Margins and extra canvas take the fill; without one they stay transparent.
   if (backdropOn()) {
     const index = settings.backdrop;
     if (index <= 4) {
       ctx.fillStyle = settings.solidBg[index - 1];
     } else {
       const g = settings.gradBg[index - 5];
-      const grad = ctx.createLinearGradient(0, 0, out.width, out.height);
+      const grad = ctx.createLinearGradient(0, 0, outW, outH);
       grad.addColorStop(0, g.a);
       grad.addColorStop(1, g.b);
       ctx.fillStyle = grad;
     }
-    ctx.fillRect(0, 0, out.width, out.height);
+    ctx.fillRect(0, 0, outW, outH);
 
-    ctx.save();
-    ctx.shadowColor = 'rgba(0,0,0,.32)';
-    ctx.shadowBlur = 34 * u;
-    ctx.shadowOffsetY = 10 * u;
-    ctx.fillStyle = '#000';
-    roundRectPath(ctx, padPx, padPx, imgW, imgH, radius);
-    ctx.fill();
-    ctx.restore();
+    if (settings.pad > 0) {
+      const u = unit() * k;
+      ctx.save();
+      ctx.shadowColor = 'rgba(0,0,0,.32)';
+      ctx.shadowBlur = 34 * u;
+      ctx.shadowOffsetY = 10 * u;
+      ctx.fillStyle = '#000';
+      roundRectPath(ctx, shot.x, shot.y, shot.w, shot.h, radius);
+      ctx.fill();
+      ctx.restore();
+    }
   }
 
   ctx.save();
-  roundRectPath(ctx, padPx, padPx, imgW, imgH, radius);
+  roundRectPath(ctx, shot.x, shot.y, shot.w, shot.h, radius);
   ctx.clip();
-  ctx.drawImage(img, padPx, padPx, imgW, imgH);
-  ctx.drawImage(renderAnnotations(), padPx, padPx, imgW, imgH);
+  ctx.drawImage(img, shot.x, shot.y, shot.w, shot.h);
+  ctx.drawImage(renderAnnotations(k), shot.x, shot.y, shot.w, shot.h);
   ctx.restore();
 
-  // Outside the clip, so it sits on the backdrop when there is one.
-  if (settings.watermark) drawWatermark(ctx, out.width, out.height, imgW, imgH);
+  if (settings.watermark) drawWatermark(ctx, outW, outH);
 
   return out.toDataURL('image/png');
 }
@@ -895,16 +997,30 @@ function flashLabel(button, text) {
 
 async function copyToClipboard() {
   const dataUrl = await compose();
-  if (!dataUrl) return toast('Nothing to copy yet');
+  if (!dataUrl) {
+    toast('Nothing to copy yet');
+    return false;
+  }
   try {
     const blob = await (await fetch(dataUrl)).blob();
     await navigator.clipboard.write([new ClipboardItem({ 'image/png': blob })]);
     flashLabel($('#copy'), 'Copied');
     toast('Copied to clipboard');
+    return true;
   } catch (err) {
     console.error('Clipboard write failed', err);
     toast('Could not copy the image');
+    return false;
   }
+}
+
+/** Copy, then dismiss the window — the quick way to hand a shot on. */
+async function copyAndClose() {
+  closeCopyMenu();
+  const copied = await copyToClipboard();
+  if (!copied || !isDesktop || !window.electronAPI.window) return;
+  flashLabel($('#copy'), 'Closing…');
+  setTimeout(() => window.electronAPI.window('close'), 350);
 }
 
 async function saveToDisk() {
@@ -930,12 +1046,22 @@ async function saveToDisk() {
 }
 
 /* ==========================================================================
-   Status bar — backdrop, watermark, zoom, theme
+   Status bar — padding & fill, aspect ratio & export size, theme, zoom
    ========================================================================== */
 
-/** Builds the chips once. Selecting one must not replace these nodes: the click
- *  target would detach mid-dispatch and the popover would read it as a click
- *  outside itself and close. syncBackdropChips() updates them in place. */
+function padNote() {
+  if (settings.pad === 0) return 'No margin around the screenshot.';
+  return backdropOn() ? 'Margin uses the fill below.' : 'Margin stays transparent in the PNG.';
+}
+
+function ratioNote(R) {
+  if (!R.v) return 'Matches the screenshot — no extra canvas.';
+  return backdropOn() ? 'Extra canvas is filled with the chosen fill.' : 'Extra canvas stays transparent in the PNG.';
+}
+
+/** Builds the fill chips once. Selecting one must not replace these nodes: the
+ *  click target would detach mid-dispatch and the popover would read it as a
+ *  click outside itself and close. syncPaddingUI() updates them in place. */
 function renderBackdropChips() {
   const solids = $('#solid-chips');
   const grads = $('#grad-chips');
@@ -948,34 +1074,101 @@ function renderBackdropChips() {
     btn.dataset.backdrop = String(index);
     btn.title = index === 0 ? 'None' : index <= 4 ? SOLID_NAMES[index - 1] : GRAD_NAMES[index - 5];
     btn.setAttribute('aria-label', btn.title);
-    btn.addEventListener('click', () => {
-      settings.backdrop = index;
-      saveSettings();
-      syncBackdropChips();
-      relayout();
-    });
+    btn.addEventListener('click', () => pickFill(index));
     parent.appendChild(btn);
   };
 
   [0, 1, 2, 3, 4].forEach((i) => addChip(i, solids));
   [5, 6, 7, 8].forEach((i) => addChip(i, grads));
-  syncBackdropChips();
+  syncPaddingUI();
 }
 
-function syncBackdropChips() {
+function pickFill(index) {
+  settings.backdrop = index;
+  // A fill with no margin has nowhere to show on "Orig" — give it some.
+  if (index !== 0 && settings.pad === 0) settings.pad = 6;
+  saveSettings();
+  syncPaddingUI();
+  relayout();
+}
+
+function setPad(value) {
+  settings.pad = clamp(Math.round(Number(value) || 0), 0, 18);
+  saveSettings();
+  syncPaddingUI();
+  relayout();
+}
+
+function syncPaddingUI() {
   document.querySelectorAll('#backdrop-pop .chip').forEach((btn) => {
     const index = Number(btn.dataset.backdrop);
     btn.style.background = index === 0 ? NONE_CHIP : backdropCss(index);
     btn.setAttribute('aria-pressed', String(settings.backdrop === index));
   });
-  $('#pad-range').value = settings.pad;
-  syncBackdropButton();
+  document.querySelectorAll('#pad-range, #pad-range-prefs').forEach((input) => { input.value = settings.pad; });
+  document.querySelectorAll('.pad-value').forEach((span) => { span.textContent = settings.pad + '%'; });
+  document.querySelectorAll('.pad-note').forEach((note) => { note.textContent = padNote(); });
+
+  el.backdropChip.style.background = backdropOn() ? backdropCss() : NONE_CHIP;
+  el.backdropBtn.classList.toggle('on', backdropOn() || settings.pad > 0);
+  if (hasImage()) syncRatioPop();
 }
 
-function syncBackdropButton() {
-  el.backdropChip.style.background = backdropOn() ? backdropCss() : NONE_CHIP;
-  el.backdropBtn.classList.toggle('on', backdropOn());
-  $('#pad-value').textContent = backdropOn() ? settings.pad + '%' : 'Off';
+/** Builds the ratio and scale pickers once; syncRatioPop() keeps them current. */
+function renderRatioPop() {
+  el.ratioSeg.innerHTML = '';
+  RATIOS.forEach((r) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.ratio = r.id;
+    btn.textContent = r.label;
+    btn.title = r.hint;
+    btn.addEventListener('click', () => {
+      ui.ratio = r.id;
+      relayout();
+    });
+    el.ratioSeg.appendChild(btn);
+  });
+
+  el.scaleSeg.innerHTML = '';
+  SCALES.forEach((sc) => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.dataset.scale = String(sc.k);
+    btn.textContent = sc.label;
+    btn.addEventListener('click', () => {
+      ui.outScale = sc.k;
+      ui.outW = null;
+      syncRatioPop();
+    });
+    el.scaleSeg.appendChild(btn);
+  });
+}
+
+function syncRatioPop(layout) {
+  const R = currentRatio();
+  el.ratioLabel.textContent = R.label;
+  el.ratioBtn.classList.toggle('on', !!R.v);
+  el.ratioNote.textContent = ratioNote(R);
+  el.ratioSeg.querySelectorAll('button').forEach((btn) => {
+    btn.setAttribute('aria-pressed', String(btn.dataset.ratio === R.id));
+  });
+
+  if (!hasImage()) {
+    el.outW.value = '';
+    el.outH.textContent = '—';
+    return;
+  }
+
+  const L = layout || naturalLayout();
+  const outW = exportWidth(L);
+  el.scaleSeg.querySelectorAll('button').forEach((btn) => {
+    const k = Number(btn.dataset.scale);
+    btn.title = Math.round(L.outW * k) + 'px wide';
+    btn.setAttribute('aria-pressed', String(ui.outW == null && ui.outScale === k));
+  });
+  if (document.activeElement !== el.outW) el.outW.value = outW;
+  el.outH.textContent = Math.max(1, Math.round((L.outH * outW) / L.outW));
 }
 
 function setTheme(theme) {
@@ -1034,7 +1227,7 @@ function renderPrefs() {
     row.querySelector('input').addEventListener('input', (e) => {
       settings.solidBg[i] = e.target.value;
       saveSettings();
-      syncBackdropChips();
+      syncPaddingUI();
       relayout();
     });
     solidRows.appendChild(row);
@@ -1058,14 +1251,14 @@ function renderPrefs() {
       settings.gradBg[i].a = e.target.value;
       paint();
       saveSettings();
-      syncBackdropChips();
+      syncPaddingUI();
       relayout();
     });
     end.addEventListener('input', (e) => {
       settings.gradBg[i].b = e.target.value;
       paint();
       saveSettings();
-      syncBackdropChips();
+      syncPaddingUI();
       relayout();
     });
     gradRows.appendChild(row);
@@ -1137,40 +1330,69 @@ $('#prefs-reset').addEventListener('click', () => {
   saveSettings();
   renderPrefs();
   renderPalette();
-  syncBackdropChips();
+  syncPaddingUI();
   relayout();
 });
 
-function closeBackdropPop() {
-  el.backdropPop.hidden = true;
-  el.backdropBtn.setAttribute('aria-expanded', 'false');
+/* --- Popovers ------------------------------------------------------------
+ * Each stays open while you work in it — picking fills, dragging padding,
+ * typing a width. Only a click outside, its own button again, or Escape
+ * closes it, and opening one closes the others. composedPath() is fixed at
+ * dispatch, so it reports the true origin even if a handler replaced the
+ * clicked node.
+ */
+const POPOVERS = [
+  { name: 'backdrop', pop: el.backdropPop, btn: el.backdropBtn },
+  { name: 'ratio', pop: el.ratioPop, btn: el.ratioBtn },
+  { name: 'copy', pop: el.copyMenu, btn: el.copyCaret }
+];
+
+function closePopovers(except) {
+  POPOVERS.forEach((p) => {
+    if (p.name === except) return;
+    p.pop.hidden = true;
+    p.btn.setAttribute('aria-expanded', 'false');
+  });
 }
 
-el.backdropBtn.addEventListener('click', () => {
-  const open = el.backdropPop.hidden;
-  el.backdropPop.hidden = !open;
-  el.backdropBtn.setAttribute('aria-expanded', String(open));
-});
+function togglePopover(name) {
+  const p = POPOVERS.find((x) => x.name === name);
+  const open = p.pop.hidden;
+  closePopovers(name);
+  p.pop.hidden = !open;
+  p.btn.setAttribute('aria-expanded', String(open));
+}
 
-// The popover stays open while you work in it — picking backdrops, dragging
-// padding. Only a click outside, the Backdrop button again, or Escape closes
-// it. composedPath() is fixed at dispatch, so it still reports the true origin
-// even if the handler replaced the clicked node.
+function closeBackdropPop() { closePopovers('__none__'); }
+function closeCopyMenu() { closePopovers('__none__'); }
+
+el.backdropBtn.addEventListener('click', () => togglePopover('backdrop'));
+el.ratioBtn.addEventListener('click', () => togglePopover('ratio'));
+el.copyCaret.addEventListener('click', () => togglePopover('copy'));
+
 document.addEventListener('click', (e) => {
-  if (el.backdropPop.hidden) return;
   const path = e.composedPath();
-  if (path.includes(el.backdropPop) || path.includes(el.backdropBtn)) return;
-  closeBackdropPop();
+  POPOVERS.forEach((p) => {
+    if (p.pop.hidden || path.includes(p.pop) || path.includes(p.btn)) return;
+    p.pop.hidden = true;
+    p.btn.setAttribute('aria-expanded', 'false');
+  });
 });
 
-$('#pad-range').addEventListener('input', (e) => {
-  settings.pad = Number(e.target.value);
-  // Nudging padding while the backdrop is off implies wanting one.
-  if (!backdropOn() && settings.pad > 0) settings.backdrop = 5;
-  saveSettings();
-  syncBackdropChips();
-  relayout();
+document.querySelectorAll('#pad-range, #pad-range-prefs').forEach((input) => {
+  input.addEventListener('input', (e) => setPad(e.target.value));
 });
+
+el.outW.addEventListener('change', (e) => {
+  ui.outW = clamp(Math.round(Number(e.target.value) || 0), 240, 8000);
+  syncRatioPop();
+});
+
+$('#copy-menu-copy').addEventListener('click', () => {
+  closeCopyMenu();
+  copyToClipboard();
+});
+$('#copy-menu-close').addEventListener('click', copyAndClose);
 
 const wmToggle = $('#wm-toggle');
 wmToggle.addEventListener('change', () => {
@@ -1224,7 +1446,7 @@ document.addEventListener('keydown', (e) => {
 
   if (e.key === 'Escape') {
     if (!el.prefs.hidden) return closePrefs();
-    if (!el.backdropPop.hidden) return closeBackdropPop();
+    if (POPOVERS.some((p) => !p.pop.hidden)) return closePopovers('__none__');
     if (ui.tool === 'crop') return setTool('select');
     if (ui.tool === 'emoji') return setTool('select');
     return;
@@ -1245,7 +1467,12 @@ document.addEventListener('keydown', (e) => {
 
   if (mod) {
     const key = e.key.toLowerCase();
-    if (key === 'c') { e.preventDefault(); copyToClipboard(); return; }
+    if (key === 'c') {
+      e.preventDefault();
+      if (e.shiftKey) copyAndClose();
+      else copyToClipboard();
+      return;
+    }
     if (key === 's') { e.preventDefault(); saveToDisk(); return; }
     if (key === 'd') { e.preventDefault(); duplicateSelection(); return; }
     if (key === 'z') {
@@ -1320,9 +1547,18 @@ wmToggle.checked = settings.watermark;
 document.body.classList.toggle('no-watermark', !settings.watermark);
 renderPalette();
 renderEmojiPicker();
+renderRatioPop();
 renderBackdropChips();
-syncBackdropButton();
 setPrefsTab('annotate');
+
+// Shortcut labels follow the platform's modifier key.
+$('#prefs-open').title = `Preferences — ${MOD},`;
+$('#copy').title = `Copy to clipboard — ${MOD}C`;
+$('#save').title = `Save to disk — ${MOD}S`;
+el.undo.title = `Undo — ${MOD}Z`;
+el.redo.title = `Redo — ${isMac ? '⇧⌘Z' : 'Ctrl+Shift+Z'}`;
+$('#copy-key').textContent = `${MOD_MENU}C`;
+$('#copy-close-key').textContent = `⇧${MOD_MENU}C`;
 setTool('arrow');
 updateHistoryButtons();
 loadFromQueryParam();

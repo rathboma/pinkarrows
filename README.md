@@ -12,19 +12,22 @@ I really loved Skitch. In fact, the pink Skitch arrows and dumbed-down text beca
 
 - **Annotate** with arrows, boxes, a highlighter, text labels and emoji
 - **Crop** to the part of the screenshot that matters
-- **Backdrops** — frame the shot on a solid colour or gradient with adjustable padding
-- **Copy to clipboard** or save to disk, at the screenshot's full resolution
-- Editable six-colour palette, light and dark themes
+- **Padding & fill** — add a margin around the shot, on a solid colour or gradient, or leave it transparent
+- **Aspect ratio & export size** — frame the output as 16:9, 4:3, 1:1 or 9:16 and export at ½×, 1×, 2× or any width
+- **Copy to clipboard** (or copy and close the window) or save to disk
+- Editable six-colour palette, light and dark themes, native window chrome on macOS, Windows and Linux
 
 ### Hotkeys
+
+On macOS, read `Ctrl` as `⌘`.
 
 | Key | Action | Key | Action |
 | --- | --- | --- | --- |
 | `S` | Select | `Ctrl+C` | Copy image to clipboard |
-| `A` | Arrow | `Ctrl+S` | Save to disk |
-| `R` | Box | `Ctrl+V` | Paste an image |
-| `H` | Highlighter | `Ctrl+Z` | Undo |
-| `T` | Text | `Ctrl+Shift+Z` | Redo |
+| `A` | Arrow | `Ctrl+Shift+C` | Copy and close the window |
+| `B` | Box | `Ctrl+S` | Save to disk |
+| `H` | Highlighter | `Ctrl+V` | Paste an image |
+| `T` | Text | `Ctrl+Z` / `Ctrl+Shift+Z` | Undo / redo |
 | `E` | Emoji | `Ctrl+D` | Duplicate selection |
 | `C` | Crop | `Ctrl+,` | Preferences |
 
