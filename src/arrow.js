@@ -1,122 +1,102 @@
-var originalPoints = [{
-  x: 0, y: 0
-}, {
-  x: 26, y: 2
-}, {
-  x: 25, y: 5
-}, {
-  x: 40, y: 0
-}, {
-  x: 25, y: -5
-}, {
-  x: 26, y: -2
-}, {
-  x: 0, y: 0
-}];
+// Base outline of the arrow, in "units" — one unit is a pixel on a 900px-wide
+// render. createArrow multiplies these by the caller's unit so an arrow keeps
+// the same proportions whatever the screenshot's resolution is.
+const basePoints = [
+  { x: 0, y: 0 },
+  { x: 26, y: 2 },
+  { x: 25, y: 5 },
+  { x: 40, y: 0 },
+  { x: 25, y: -5 },
+  { x: 26, y: -2 },
+  { x: 0, y: 0 }
+];
 
 function lerp(start, end, amt) {
-  return (1 - amt) * start + amt * end
+  return (1 - amt) * start + amt * end;
 }
 
-function createArrow(left, top) {
-  // Define the points for a simple arrow shape
+function scalePoints(unit) {
+  return basePoints.map((p) => ({ x: p.x * unit, y: p.y * unit }));
+}
 
-  var polygon = new fabric.Polygon(structuredClone(originalPoints), {
-    left: left-40,
-    top: top-5,
-    fill: '#FF007F',
+function createArrow(left, top, options = {}) {
+  const unit = options.unit || 1;
+  const fill = options.color || '#FF007F';
+  const points = scalePoints(unit);
+
+  const polygon = new fabric.Polygon(points, {
+    left: left - 40 * unit,
+    top: top - 5 * unit,
+    fill,
+    escTool: 'arrow',
     originX: 'left',
-    strokeWidth: 4,
+    strokeWidth: 4 * unit,
     stroke: 'white',
     scaleX: 1,
     scaleY: 1,
     objectCaching: true,
     strokeUniform: true,
     transparentCorners: false,
-    cornerColor: 'blue',
+    cornerColor: 'blue'
   });
 
   polygon.strokeLineJoin = 'round';
-
-  function getLocalStartPoint() {
-    return new fabric.Point(points[0].x, points[0].y);
-  }
-
-  function getLocalEndPoint() {
-    return new fabric.Point(points[0].x + polygon.width * polygon.scaleX, points[0].y);
-  }
+  polygon.arrowUnit = unit;
 
   function arrowScaleActionHandler(eventData, transform, x, y) {
-    const target = transform.target;
-    const localPoint = fabric.controlsUtils.getLocalPoint(transform, transform.originX, transform.originY, x, y);
-    setArrowHeadPoint(target, x, y)
-    return true
+    setArrowHeadPoint(transform.target, x, y);
+    return true;
   }
 
-  function renderControlHandle() {
-    return function renderIcon(ctx, left, top, styleOverride, fabricObject) {
-      var size = this.cornerSize;
-      ctx.save();
-      let circle = new fabric.Circle({
-        radius:10,
-        top:top,
-        left:left,
-        fill:'red'
-      })
-      ctx.add(circle)
-      ctx.restore();
-    }
-  }
-
-  const right_arrow_control = new fabric.Control({
+  const rightArrowControl = new fabric.Control({
     x: 0.51,
     y: 0,
     cursorStyle: 'pointer',
     cornerStyle: 'circle',
-    actionHandler: arrowScaleActionHandler, // Setting anchor to MR
+    actionHandler: arrowScaleActionHandler,
     actionName: 'right_polygon_modify'
   });
 
-  polygon.controls = {right_arrow_control}
+  polygon.controls = { right_arrow_control: rightArrowControl };
 
-  function getScaleActionName() {
-    return 'scaleArrowActionName'
-  }
-
-  return polygon
+  return polygon;
 }
 
 function updatePoints(scaleX, target) {
+  const unit = target.arrowUnit || 1;
+  const original = scalePoints(unit);
+
   for (let i = 1; i < target.points.length - 1; i++) {
-    {
-      target.points[i].y = originalPoints[i].y * (1 + .1 * scaleX);
-    }
+    target.points[i].y = original[i].y * (1 + 0.1 * scaleX);
   }
-  const factor = Math.min(scaleX / 4, 1)
-  target.points[1].x = lerp(originalPoints[1].x, 35, factor)
-  target.points[2].x = lerp(originalPoints[1].x, 35, factor)
-  target.points[4].x = lerp(originalPoints[1].x, 35, factor)
-  target.points[5].x = lerp(originalPoints[1].x, 35, factor)
+
+  const factor = Math.min(scaleX / 4, 1);
+  const tip = lerp(original[1].x, 35 * unit, factor);
+  target.points[1].x = tip;
+  target.points[2].x = tip;
+  target.points[4].x = tip;
+  target.points[5].x = tip;
 }
 
 function setArrowHeadPoint(target, x, y) {
-  const anchor = new fabric.Point(target.width * -.5, 0);
-  const absoluteAnchorPoint = fabric.util.transformPoint(anchor, target.calcTransformMatrix())
+  const anchor = new fabric.Point(target.width * -0.5, 0);
+  const absoluteAnchorPoint = fabric.util.transformPoint(anchor, target.calcTransformMatrix());
 
-  let angleRadians = Math.atan2(y - absoluteAnchorPoint.y, x - absoluteAnchorPoint.x);
+  const angleRadians = Math.atan2(y - absoluteAnchorPoint.y, x - absoluteAnchorPoint.x);
+  const distance = Math.sqrt(
+    Math.pow(absoluteAnchorPoint.x - x, 2) + Math.pow(absoluteAnchorPoint.y - y, 2)
+  );
 
-  let newTop = target.top
-  let newLeft = target.left
   target.set({
     angle: fabric.util.radiansToDegrees(angleRadians),
-    scaleX: Math.sqrt(Math.pow(absoluteAnchorPoint.x - x, 2) + Math.pow(absoluteAnchorPoint.y - y, 2)) / target.width,
-    scaleY: Math.min(3, Math.sqrt(Math.pow(absoluteAnchorPoint.x - x, 2) + Math.pow(absoluteAnchorPoint.y - y, 2)) / target.width),
-    top: newTop,
-    left: newLeft,
+    scaleX: distance / target.width,
+    scaleY: Math.min(3, distance / target.width),
+    top: target.top,
+    left: target.left
   });
-  updatePoints(target.scaleX, target)
+  updatePoints(target.scaleX, target);
 
-  target.setCoords(); // Refresh object coordinates
+  target.setCoords();
 }
 
-export { createArrow, setArrowHeadPoint }
+export { createArrow, setArrowHeadPoint };
